@@ -2,7 +2,6 @@
 
 `pt-schema-diff` compares the tables of two MySQL schemas and writes the SQL that makes the **target** match the **source**. It rates every change for data-loss risk and for how MySQL 8.0+ runs it.
 
-This is the Schema Diff feature of *MySQL Query Advisor* (`mysql_query_advisor/schema_diff.py`), ported to Go as a standalone, single-binary tool. It is laid out so it can later become part of Percona Toolkit (see [Percona Toolkit integration](#percona-toolkit-integration)).
 
 ```
 pt-schema-diff h=prod-db,u=reader,D=shop h=staging-db,D=shop --ask-pass
