@@ -1,0 +1,285 @@
+# Schema diff
+
+- **Source** (the schema to match): S
+- **Target** (the schema the script changes): T
+- **Generated:** 2026-01-02 03:04
+
+6 tables: 1 to create, 4 to change, 1 only in the target, 0 identical. Changes: 3 critical, 16 warnings, 7 suggestions, 7 safe.
+
+## `customers` — alter (MySQL: blocks writes)
+
+- ⚠️ **Change column `id`: `auto_increment` → `unsigned auto_increment`.** Other column attributes change; check them before running. MySQL copies the whole table and blocks writes to it until the copy finishes. *MySQL: blocks writes.*
+- ⚠️ **Change column `email`: `varchar(255)` → `varchar(320)`, character set utf8mb3 → utf8mb4.** Safe for the data. The limit only gets bigger. Sorting, comparisons and unique checks follow the new rules, and joins to columns that keep the old collation can no longer use an index. MySQL only updates the table definition (no rebuild); reads and writes continue. *MySQL: instant.*
+- ⚠️ **Rename column `name` → `full_name`.** The data is kept. Treated as a rename because `name` exists only in the target, `full_name` only in the source, and both have the same definition. If they are really two different columns, replace this CHANGE COLUMN with a DROP COLUMN and an ADD COLUMN. MySQL only updates the table definition, so it is instant. *MySQL: instant.*
+- ✅ **Change column `status`: `enum('active','paused','closed')` → `enum('active','paused','closed','deleted')`.** Safe for the data. Values are only added at the end of the list. MySQL only updates the table definition, so it is instant. *MySQL: instant.*
+- ⚠️ **Change column `balance`: `decimal(10,2)` → `decimal(12,2)`.** Safe for the data. The new type holds every current value. MySQL copies the whole table and blocks writes to it until the copy finishes. *MySQL: blocks writes.*
+- 🛑 **Change column `notes`: `mediumtext` → `text`.** Values longer than the new type allows are rejected (strict mode) or cut off. Check first: `SELECT MAX(LENGTH(notes)) FROM customers`. MySQL copies the whole table and blocks writes to it until the copy finishes. *MySQL: blocks writes.*
+- 💡 **Change column `created_at`: `datetime` → `datetime(3)`, default current_timestamp → current_timestamp(3).** Safe for the data. More fractional-second digits. MySQL copies the whole table and blocks writes to it until the copy finishes. *MySQL: blocks writes.*
+- 🛑 **Drop column `legacy_flag` `tinyint`.** Everything stored in this column is deleted for good. It exists only in the target. The script leaves this commented out unless --include-drops is given. Instant on MySQL 8.0.29 and later; older versions rebuild the table. *MySQL: instant.*
+- 💡 **Make index `idx_name` invisible.** The optimizer stops using it, but MySQL keeps it up to date, so it can be made visible again instantly. MySQL only updates the table definition, so it is instant. *MySQL: instant.*
+- 💡 **Drop index `email_idx` (`email`).** No data is lost, but queries that use this index may get slower. To test first, hide it with `ALTER TABLE customers ALTER INDEX email_idx INVISIBLE` and watch performance. MySQL only updates the table definition (no rebuild); reads and writes continue. *MySQL: instant.*
+- 💡 **Drop index `idx_status` (`status`).** No data is lost, but queries that use this index may get slower. To test first, hide it with `ALTER TABLE customers ALTER INDEX idx_status INVISIBLE` and watch performance. MySQL only updates the table definition (no rebuild); reads and writes continue. *MySQL: instant.*
+- ⚠️ **Add unique index `uq_email` (`email`).** The ALTER fails if the table already holds duplicate values. Check first: `SELECT email, COUNT(*) FROM customers GROUP BY email HAVING COUNT(*) > 1`. Reads and writes continue while it builds; the build reads the whole table. *MySQL: online.*
+- 💡 **Add index `idx_status_created` (`status`, `created_at`).** No data changes. Reads and writes continue while it builds; the build reads the whole table, so it takes a while on a big one. *MySQL: online.*
+- ⚠️ **Add full-text index `ft_notes` (`notes`).** No data changes. Writes to the table are blocked while it builds (the table's first full-text index also rebuilds the table). *MySQL: blocks writes.*
+- ⚠️ **Add CHECK constraint `chk_balance` `CHECK ((balance >= 0))`.** The ALTER fails if any existing row breaks the rule. MySQL checks every row and blocks writes to the table while it runs. *MySQL: blocks writes.*
+- ✅ **Change table options: comment '' → 'Customer accounts'.** No data changes. MySQL only updates the table definition, so it is instant. *MySQL: instant.*
+
+```sql
+ALTER TABLE `customers`
+  MODIFY COLUMN `id` int unsigned NOT NULL AUTO_INCREMENT,
+  MODIFY COLUMN `email` varchar(320) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+  CHANGE COLUMN `name` `full_name` varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL DEFAULT '',
+  MODIFY COLUMN `status` enum('active','paused','closed','deleted') CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL DEFAULT 'active',
+  MODIFY COLUMN `balance` decimal(12,2) NOT NULL DEFAULT '0.00',
+  MODIFY COLUMN `notes` text CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci,
+  MODIFY COLUMN `created_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  DROP COLUMN `legacy_flag`,
+  ALTER INDEX `idx_name` INVISIBLE,
+  DROP INDEX `email_idx`,
+  DROP INDEX `idx_status`,
+  ADD UNIQUE INDEX `uq_email` (`email`),
+  ADD INDEX `idx_status_created` (`status`, `created_at`),
+  ADD FULLTEXT INDEX `ft_notes` (`notes`),
+  ADD CONSTRAINT `chk_balance` CHECK ((`balance` >= 0)),
+  COMMENT='Customer accounts';
+```
+
+```diff
+--- target
++++ source
+@@ -1,16 +1,17 @@
+ CREATE TABLE `customers` (
+-  `id` int NOT NULL AUTO_INCREMENT,
+-  `email` varchar(255) CHARACTER SET utf8mb3 COLLATE utf8mb3_general_ci NOT NULL,
+-  `name` varchar(200) NOT NULL DEFAULT '',
+-  `status` enum('active','paused','closed') NOT NULL DEFAULT 'active',
+-  `balance` decimal(10,2) NOT NULL DEFAULT '0.00',
+-  `notes` mediumtext,
+-  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
++  `id` int unsigned NOT NULL AUTO_INCREMENT,
++  `email` varchar(320) COLLATE utf8mb4_0900_ai_ci NOT NULL,
++  `full_name` varchar(200) NOT NULL DEFAULT '',
++  `status` enum('active','paused','closed','deleted') NOT NULL DEFAULT 'active',
++  `balance` decimal(12,2) NOT NULL DEFAULT '0.00',
++  `notes` text,
++  `created_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+-  `legacy_flag` tinyint(1) DEFAULT NULL,
+   `country` char(2) CHARACTER SET ascii NOT NULL DEFAULT 'US',
+   PRIMARY KEY (`id`),
+-  KEY `email_idx` (`email`),
+-  KEY `idx_status` (`status`),
+-  KEY `idx_name` (`name`(50))
+-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
++  UNIQUE KEY `uq_email` (`email`),
++  KEY `idx_status_created` (`status`,`created_at`),
++  KEY `idx_name` (`full_name`(50)) INVISIBLE,
++  FULLTEXT KEY `ft_notes` (`notes`),
++  CONSTRAINT `chk_balance` CHECK ((`balance` >= 0))
++) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='Customer accounts'
+```
+
+## `old_stuff` — drop
+
+- 🛑 **Drop table `old_stuff`.** It exists only in the target. Everything stored in it is deleted for good. The script leaves this commented out unless --include-drops is given.
+
+```sql
+DROP TABLE `old_stuff`;
+```
+
+## `events` — alter (MySQL: online, rebuilds table)
+
+- 💡 **Column order differs (not changed by the script).** Queries that name their columns are not affected, and moving columns would mean copying the whole table.
+- ⚠️ **Change the primary key: (`id`) → (`id`, `happened`).** Fails if those columns hold duplicate values or NULLs. MySQL rebuilds the table, because InnoDB stores rows in primary key order: reads and writes continue, but it takes time and disk space on a big table. *MySQL: online, rebuilds table.*
+- ⚠️ **Partitioning differs (not changed by the script).** Source: `PARTITION BY RANGE (year(happened)) (PARTITION p2025 VALUES LESS THAN (2026) ENGINE = InnoDB, PARTITION pmax VALUES LESS THAN MAXVALUE ENGINE = InnoDB)`. Target: `none`. Repartitioning copies the whole table, so plan it as a separate change.
+
+```sql
+ALTER TABLE `events`
+  DROP PRIMARY KEY, ADD PRIMARY KEY (`id`, `happened`);
+```
+
+```diff
+--- target
++++ source
+@@ -1,5 +1,8 @@
+ CREATE TABLE `events` (
++  `id` int NOT NULL,
+   `happened` date NOT NULL,
+-  `id` int NOT NULL,
+-  PRIMARY KEY (`id`)
++  PRIMARY KEY (`id`,`happened`)
+ ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
++  PARTITION BY RANGE (year(`happened`))
++(PARTITION p2025 VALUES LESS THAN (2026) ENGINE = InnoDB,
++ PARTITION pmax VALUES LESS THAN MAXVALUE ENGINE = InnoDB)
+```
+
+## `orders` — alter (MySQL: blocks writes)
+
+- ⚠️ **Change column `customer_id`: `-` → `unsigned`.** Other column attributes change; check them before running. MySQL copies the whole table and blocks writes to it until the copy finishes. *MySQL: blocks writes.*
+- ⚠️ **Change column `state`: `varchar(10)` → `varchar(20)`, NULL allowed → NOT NULL, character set latin1 → utf8mb4, default none → 'new'.** Safe for the data. The limit only gets bigger. The ALTER fails (strict mode) if any row holds NULL. Check first: `SELECT COUNT(*) FROM orders WHERE state IS NULL`. Sorting, comparisons and unique checks follow the new rules, and joins to columns that keep the old collation can no longer use an index. MySQL only updates the table definition (no rebuild); reads and writes continue. *MySQL: instant.*
+- ⚠️ **Change column `ref_code`: `varchar(32)` → `varchar(64)`, character set latin1 → utf8mb4.** Safe for the data. But MySQL has to copy the table: past 255 bytes, every value needs a 2-byte length field instead of 1. Sorting, comparisons and unique checks follow the new rules, and joins to columns that keep the old collation can no longer use an index. MySQL copies the whole table and blocks writes to it until the copy finishes. *MySQL: blocks writes.*
+- ⚠️ **Add column `total_cents` `bigint` after `ref_code`.** A STORED generated column: MySQL computes and stores it for every existing row. MySQL copies the whole table and blocks writes to it until the copy finishes. *MySQL: blocks writes.*
+- ✅ **Rename index `customer_id` → `idx_customer`.** Same columns; only the name changes. MySQL only updates the table definition (no rebuild); reads and writes continue. *MySQL: instant.*
+- ✅ **Rename index `idx_ref_old` → `idx_ref`.** Same columns; only the name changes. MySQL only updates the table definition (no rebuild); reads and writes continue. *MySQL: instant.*
+- 💡 **Drop foreign key `orders_ibfk_1` (customer_id → `customers`).** No data is lost, but MySQL stops checking that customer_id values exist in `customers`. MySQL only updates the table definition, so it is instant. *MySQL: instant.*
+- ⚠️ **Add foreign key `fk_orders_customer` (customer_id → `customers`).** The ALTER fails if any existing row points at a row missing from `customers`. MySQL checks every row and blocks writes to the table while it runs. *MySQL: blocks writes.*
+- ⚠️ **Change table options: engine myisam → innodb; default character set latin1 / default → utf8mb4 / utf8mb4_0900_ai_ci; row_format default → dynamic.** The default character set applies only to columns added later; existing columns are changed by their own MODIFY COLUMN above. MySQL copies the whole table and blocks writes to it until the copy finishes. *MySQL: blocks writes.*
+
+```sql
+ALTER TABLE `orders`
+  DROP FOREIGN KEY `orders_ibfk_1`;
+
+ALTER TABLE `orders`
+  MODIFY COLUMN `customer_id` int unsigned NOT NULL,
+  MODIFY COLUMN `state` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL DEFAULT 'new',
+  MODIFY COLUMN `ref_code` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci DEFAULT NULL,
+  ADD COLUMN `total_cents` bigint GENERATED ALWAYS AS ((`amount` * 100)) STORED AFTER `ref_code`,
+  RENAME INDEX `customer_id` TO `idx_customer`,
+  RENAME INDEX `idx_ref_old` TO `idx_ref`,
+  ENGINE=InnoDB, DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci, ROW_FORMAT=DYNAMIC;
+
+ALTER TABLE `orders`
+  ADD CONSTRAINT `fk_orders_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE CASCADE;
+```
+
+```diff
+--- target
++++ source
+@@ -1,11 +1,12 @@
+ CREATE TABLE `orders` (
+   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+-  `customer_id` int NOT NULL,
++  `customer_id` int unsigned NOT NULL,
+   `amount` decimal(10,2) NOT NULL,
+-  `state` varchar(10) NULL,
+-  `ref_code` varchar(32) DEFAULT NULL,
++  `state` varchar(20) NOT NULL DEFAULT 'new',
++  `ref_code` varchar(64) DEFAULT NULL,
++  `total_cents` bigint GENERATED ALWAYS AS ((`amount` * 100)) STORED,
+   PRIMARY KEY (`id`),
+-  KEY `customer_id` (`customer_id`),
+-  KEY `idx_ref_old` (`ref_code`),
+-  CONSTRAINT `orders_ibfk_1` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`)
+-) ENGINE=MyISAM DEFAULT CHARSET=latin1
++  KEY `idx_customer` (`customer_id`),
++  KEY `idx_ref` (`ref_code`),
++  CONSTRAINT `fk_orders_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE CASCADE
++) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci ROW_FORMAT=DYNAMIC
+```
+
+## `settings` — alter (MySQL: online)
+
+- ✅ **Add column `scope` `varchar(20)` after `v`.** No existing data changes. Instant on MySQL 8.0.12 and later. *MySQL: instant.*
+- ⚠️ **Add unique index `scope` (`scope`).** The ALTER fails if the table already holds duplicate values. Check first: `SELECT scope, COUNT(*) FROM settings GROUP BY scope HAVING COUNT(*) > 1`. Reads and writes continue while it builds; the build reads the whole table. *MySQL: online.*
+
+```sql
+ALTER TABLE `settings`
+  ADD COLUMN `scope` varchar(20) AFTER `v`,
+  ADD UNIQUE INDEX `scope` (`scope`);
+```
+
+```diff
+--- target
++++ source
+@@ -2,4 +2,6 @@
+   `k` varchar(64),
+   `v` json,
+-  PRIMARY KEY (`k`)
++  `scope` varchar(20),
++  PRIMARY KEY (`k`),
++  UNIQUE INDEX `scope` (`scope`)
+ )
+```
+
+## `audit_log` — create
+
+- ✅ **Create table `audit_log` (3 columns, 2 indexes).** It exists only in the source. A new, empty table: nothing else is affected.
+- ✅ **Add foreign key `audit_log_ibfk_1` (order_id → `orders`).** Added after all tables exist; the new table is empty, so nothing can fail. *MySQL: instant.*
+
+```sql
+CREATE TABLE `audit_log` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `order_id` bigint unsigned NOT NULL,
+  `message` varchar(255) NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+ALTER TABLE `audit_log`
+  ADD FOREIGN KEY (`order_id`) REFERENCES `orders` (`id`);
+```
+
+## Migration script
+
+```sql
+-- Schema migration generated by pt-schema-diff, 2026-01-02 03:04
+-- Makes: T
+-- match:  S
+-- Review every statement and test on a copy first. Run during low traffic: some ALTERs copy
+-- their table and block writes to it while they run (see the report for which ones).
+
+USE `shop`;
+
+-- Drop foreign keys that change or go away (first, so their indexes and columns can change)
+
+ALTER TABLE `orders`
+  DROP FOREIGN KEY `orders_ibfk_1`;
+
+-- Create the tables that exist only in the source
+
+CREATE TABLE `audit_log` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `order_id` bigint unsigned NOT NULL,
+  `message` varchar(255) NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Change existing tables
+
+ALTER TABLE `customers`
+  MODIFY COLUMN `id` int unsigned NOT NULL AUTO_INCREMENT,
+  MODIFY COLUMN `email` varchar(320) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+  CHANGE COLUMN `name` `full_name` varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL DEFAULT '',
+  MODIFY COLUMN `status` enum('active','paused','closed','deleted') CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL DEFAULT 'active',
+  MODIFY COLUMN `balance` decimal(12,2) NOT NULL DEFAULT '0.00',
+  MODIFY COLUMN `notes` text CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci,
+  MODIFY COLUMN `created_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  DROP COLUMN `legacy_flag`,
+  ALTER INDEX `idx_name` INVISIBLE,
+  DROP INDEX `email_idx`,
+  DROP INDEX `idx_status`,
+  ADD UNIQUE INDEX `uq_email` (`email`),
+  ADD INDEX `idx_status_created` (`status`, `created_at`),
+  ADD FULLTEXT INDEX `ft_notes` (`notes`),
+  ADD CONSTRAINT `chk_balance` CHECK ((`balance` >= 0)),
+  COMMENT='Customer accounts';
+
+ALTER TABLE `events`
+  DROP PRIMARY KEY, ADD PRIMARY KEY (`id`, `happened`);
+
+ALTER TABLE `orders`
+  MODIFY COLUMN `customer_id` int unsigned NOT NULL,
+  MODIFY COLUMN `state` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL DEFAULT 'new',
+  MODIFY COLUMN `ref_code` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci DEFAULT NULL,
+  ADD COLUMN `total_cents` bigint GENERATED ALWAYS AS ((`amount` * 100)) STORED AFTER `ref_code`,
+  RENAME INDEX `customer_id` TO `idx_customer`,
+  RENAME INDEX `idx_ref_old` TO `idx_ref`,
+  ENGINE=InnoDB, DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci, ROW_FORMAT=DYNAMIC;
+
+ALTER TABLE `settings`
+  ADD COLUMN `scope` varchar(20) AFTER `v`,
+  ADD UNIQUE INDEX `scope` (`scope`);
+
+-- Drop the tables that exist only in the target
+
+DROP TABLE `old_stuff`;
+
+-- Add foreign keys (last, so the tables and indexes they need exist)
+
+ALTER TABLE `audit_log`
+  ADD FOREIGN KEY (`order_id`) REFERENCES `orders` (`id`);
+
+ALTER TABLE `orders`
+  ADD CONSTRAINT `fk_orders_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE CASCADE;
+```
