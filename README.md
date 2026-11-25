@@ -28,9 +28,33 @@ Not compared: views, routines, triggers, events. Partitioning and column-order d
 
 ## Install
 
+Each [release](https://github.com/Percona-Lab/pt-schema-diff/releases) has static binaries (no dependencies; any Linux
+distribution), a `SHA256SUMS` file and a signed build provenance attestation for every file.
+
+| File | For |
+|---|---|
+| `pt-schema-diff-linux-amd64` | Linux on x86_64 (`uname -m` prints `x86_64`) |
+| `pt-schema-diff-linux-arm64` | Linux on ARM64, e.g. Graviton (`uname -m` prints `aarch64`) |
+| `pt-schema-diff-darwin-amd64`, `-darwin-arm64` | macOS on Intel / Apple Silicon |
+| `pt-schema-diff-VERSION-linux.tar.gz` | Both Linux binaries and a `pt-schema-diff` launcher that runs the right one: one file for every Linux host |
+
+```
+V=0.1.0
+curl -fLO https://github.com/Percona-Lab/pt-schema-diff/releases/download/v$V/pt-schema-diff-linux-amd64
+curl -fLO https://github.com/Percona-Lab/pt-schema-diff/releases/download/v$V/SHA256SUMS
+sha256sum --check --ignore-missing SHA256SUMS      # must print OK
+gh attestation verify pt-schema-diff-linux-amd64 --repo Percona-Lab/pt-schema-diff   # optional: built by this repo's workflow
+install -m 0755 pt-schema-diff-linux-amd64 /usr/local/bin/pt-schema-diff
+```
+
+For automated installs (Ansible, gascan), pin the SHA-256 from `SHA256SUMS` rather than trusting the URL alone.
+
+Releases are built by `.github/workflows/release.yml` when a `v*` tag is pushed. To build from source instead:
+
 ```
 make build            # bin/pt-schema-diff
 make cross            # linux/darwin × amd64/arm64 static binaries
+make dist             # dist/: the release files and SHA256SUMS
 ```
 
 Requires Go 1.22+. The only dependency is `github.com/go-sql-driver/mysql`, the same driver the Go tools in Percona Toolkit use.

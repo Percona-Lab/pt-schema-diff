@@ -4,12 +4,12 @@
 - **Target** (the schema the script changes): T
 - **Generated:** 2026-01-02 03:04
 
-6 tables: 1 to create, 4 to change, 1 only in the target, 0 identical. Changes: 3 critical, 16 warnings, 7 suggestions, 7 safe.
+6 tables: 1 to create, 4 to change, 1 only in the target, 0 identical. Changes: 5 critical, 14 warnings, 7 suggestions, 7 safe.
 
 ## `customers` — alter (MySQL: blocks writes)
 
-- ⚠️ **Change column `id`: `auto_increment` → `unsigned auto_increment`.** Other column attributes change; check them before running. MySQL copies the whole table and blocks writes to it until the copy finishes. *MySQL: blocks writes.*
-- ⚠️ **Change column `email`: `varchar(255)` → `varchar(320)`, character set utf8mb3 → utf8mb4.** Safe for the data. The limit only gets bigger. Sorting, comparisons and unique checks follow the new rules, and joins to columns that keep the old collation can no longer use an index. MySQL only updates the table definition (no rebuild); reads and writes continue. *MySQL: instant.*
+- 🛑 **Change column `id`: `int` → `int unsigned`.** Values outside the new range are rejected (strict mode) or clipped. Check first: `SELECT MIN(id), MAX(id) FROM customers`. MySQL copies the whole table and blocks writes to it until the copy finishes. *MySQL: blocks writes.*
+- ⚠️ **Change column `email`: `varchar(255)` → `varchar(320)`, character set utf8mb3 → utf8mb4.** Safe for the data. The limit only gets bigger. Sorting, comparisons and unique checks follow the new rules, and joins to columns that keep the old collation can no longer use an index. MySQL copies the whole table and blocks writes to it until the copy finishes. *MySQL: blocks writes.*
 - ⚠️ **Rename column `name` → `full_name`.** The data is kept. Treated as a rename because `name` exists only in the target, `full_name` only in the source, and both have the same definition. If they are really two different columns, replace this CHANGE COLUMN with a DROP COLUMN and an ADD COLUMN. MySQL only updates the table definition, so it is instant. *MySQL: instant.*
 - ✅ **Change column `status`: `enum('active','paused','closed')` → `enum('active','paused','closed','deleted')`.** Safe for the data. Values are only added at the end of the list. MySQL only updates the table definition, so it is instant. *MySQL: instant.*
 - ⚠️ **Change column `balance`: `decimal(10,2)` → `decimal(12,2)`.** Safe for the data. The new type holds every current value. MySQL copies the whole table and blocks writes to it until the copy finishes. *MySQL: blocks writes.*
@@ -88,37 +88,10 @@ ALTER TABLE `customers`
 DROP TABLE `old_stuff`;
 ```
 
-## `events` — alter (MySQL: online, rebuilds table)
-
-- 💡 **Column order differs (not changed by the script).** Queries that name their columns are not affected, and moving columns would mean copying the whole table.
-- ⚠️ **Change the primary key: (`id`) → (`id`, `happened`).** Fails if those columns hold duplicate values or NULLs. MySQL rebuilds the table, because InnoDB stores rows in primary key order: reads and writes continue, but it takes time and disk space on a big table. *MySQL: online, rebuilds table.*
-- ⚠️ **Partitioning differs (not changed by the script).** Source: `PARTITION BY RANGE (year(happened)) (PARTITION p2025 VALUES LESS THAN (2026) ENGINE = InnoDB, PARTITION pmax VALUES LESS THAN MAXVALUE ENGINE = InnoDB)`. Target: `none`. Repartitioning copies the whole table, so plan it as a separate change.
-
-```sql
-ALTER TABLE `events`
-  DROP PRIMARY KEY, ADD PRIMARY KEY (`id`, `happened`);
-```
-
-```diff
---- target
-+++ source
-@@ -1,5 +1,8 @@
- CREATE TABLE `events` (
-+  `id` int NOT NULL,
-   `happened` date NOT NULL,
--  `id` int NOT NULL,
--  PRIMARY KEY (`id`)
-+  PRIMARY KEY (`id`,`happened`)
- ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-+  PARTITION BY RANGE (year(`happened`))
-+(PARTITION p2025 VALUES LESS THAN (2026) ENGINE = InnoDB,
-+ PARTITION pmax VALUES LESS THAN MAXVALUE ENGINE = InnoDB)
-```
-
 ## `orders` — alter (MySQL: blocks writes)
 
-- ⚠️ **Change column `customer_id`: `-` → `unsigned`.** Other column attributes change; check them before running. MySQL copies the whole table and blocks writes to it until the copy finishes. *MySQL: blocks writes.*
-- ⚠️ **Change column `state`: `varchar(10)` → `varchar(20)`, NULL allowed → NOT NULL, character set latin1 → utf8mb4, default none → 'new'.** Safe for the data. The limit only gets bigger. The ALTER fails (strict mode) if any row holds NULL. Check first: `SELECT COUNT(*) FROM orders WHERE state IS NULL`. Sorting, comparisons and unique checks follow the new rules, and joins to columns that keep the old collation can no longer use an index. MySQL only updates the table definition (no rebuild); reads and writes continue. *MySQL: instant.*
+- 🛑 **Change column `customer_id`: `int` → `int unsigned`.** Values outside the new range are rejected (strict mode) or clipped. Check first: `SELECT MIN(customer_id), MAX(customer_id) FROM orders`. MySQL copies the whole table and blocks writes to it until the copy finishes. *MySQL: blocks writes.*
+- ⚠️ **Change column `state`: `varchar(10)` → `varchar(20)`, NULL allowed → NOT NULL, character set latin1 → utf8mb4, default none → 'new'.** Safe for the data. The limit only gets bigger. The ALTER fails (strict mode) if any row holds NULL. Check first: `SELECT COUNT(*) FROM orders WHERE state IS NULL`. Sorting, comparisons and unique checks follow the new rules, and joins to columns that keep the old collation can no longer use an index. MySQL copies the whole table and blocks writes to it until the copy finishes. *MySQL: blocks writes.*
 - ⚠️ **Change column `ref_code`: `varchar(32)` → `varchar(64)`, character set latin1 → utf8mb4.** Safe for the data. But MySQL has to copy the table: past 255 bytes, every value needs a 2-byte length field instead of 1. Sorting, comparisons and unique checks follow the new rules, and joins to columns that keep the old collation can no longer use an index. MySQL copies the whole table and blocks writes to it until the copy finishes. *MySQL: blocks writes.*
 - ⚠️ **Add column `total_cents` `bigint` after `ref_code`.** A STORED generated column: MySQL computes and stores it for every existing row. MySQL copies the whole table and blocks writes to it until the copy finishes. *MySQL: blocks writes.*
 - ✅ **Rename index `customer_id` → `idx_customer`.** Same columns; only the name changes. MySQL only updates the table definition (no rebuild); reads and writes continue. *MySQL: instant.*
@@ -167,6 +140,33 @@ ALTER TABLE `orders`
 +  KEY `idx_ref` (`ref_code`),
 +  CONSTRAINT `fk_orders_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE CASCADE
 +) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci ROW_FORMAT=DYNAMIC
+```
+
+## `events` — alter (MySQL: online, rebuilds table)
+
+- 💡 **Column order differs (not changed by the script).** Queries that name their columns are not affected, and moving columns would mean copying the whole table.
+- ⚠️ **Change the primary key: (`id`) → (`id`, `happened`).** Fails if those columns hold duplicate values or NULLs. MySQL rebuilds the table, because InnoDB stores rows in primary key order: reads and writes continue, but it takes time and disk space on a big table. *MySQL: online, rebuilds table.*
+- ⚠️ **Partitioning differs (not changed by the script).** Source: `PARTITION BY RANGE (year(happened)) (PARTITION p2025 VALUES LESS THAN (2026) ENGINE = InnoDB, PARTITION pmax VALUES LESS THAN MAXVALUE ENGINE = InnoDB)`. Target: `none`. Repartitioning copies the whole table, so plan it as a separate change.
+
+```sql
+ALTER TABLE `events`
+  DROP PRIMARY KEY, ADD PRIMARY KEY (`id`, `happened`);
+```
+
+```diff
+--- target
++++ source
+@@ -1,5 +1,8 @@
+ CREATE TABLE `events` (
++  `id` int NOT NULL,
+   `happened` date NOT NULL,
+-  `id` int NOT NULL,
+-  PRIMARY KEY (`id`)
++  PRIMARY KEY (`id`,`happened`)
+ ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
++  PARTITION BY RANGE (year(`happened`))
++(PARTITION p2025 VALUES LESS THAN (2026) ENGINE = InnoDB,
++ PARTITION pmax VALUES LESS THAN MAXVALUE ENGINE = InnoDB)
 ```
 
 ## `settings` — alter (MySQL: online)

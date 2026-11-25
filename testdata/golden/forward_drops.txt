@@ -1,15 +1,15 @@
 # Source: S (the schema to match)
 # Target: T (the schema the script changes)
-# 6 tables: 1 to create, 4 to change, 1 only in the target, 0 identical. Changes: 3 critical, 16 warnings, 7 suggestions, 7 safe.
+# 6 tables: 1 to create, 4 to change, 1 only in the target, 0 identical. Changes: 5 critical, 14 warnings, 7 suggestions, 7 safe.
 
 CRITICAL customers — changed · MySQL: blocks writes
-  WARNING    Change column `id`: `auto_increment` → `unsigned auto_increment`. Other column attributes change;
-             check them before running. MySQL copies the whole table and blocks writes to it until the copy
-             finishes. [MySQL: blocks writes]
+  CRITICAL   Change column `id`: `int` → `int unsigned`. Values outside the new range are rejected (strict mode)
+             or clipped. Check first: `SELECT MIN(id), MAX(id) FROM customers`. MySQL copies the whole table and
+             blocks writes to it until the copy finishes. [MySQL: blocks writes]
   WARNING    Change column `email`: `varchar(255)` → `varchar(320)`, character set utf8mb3 → utf8mb4. Safe for
              the data. The limit only gets bigger. Sorting, comparisons and unique checks follow the new rules,
-             and joins to columns that keep the old collation can no longer use an index. MySQL only updates the
-             table definition (no rebuild); reads and writes continue. [MySQL: instant]
+             and joins to columns that keep the old collation can no longer use an index. MySQL copies the whole
+             table and blocks writes to it until the copy finishes. [MySQL: blocks writes]
   WARNING    Rename column `name` → `full_name`. The data is kept. Treated as a rename because `name` exists only
              in the target, `full_name` only in the source, and both have the same definition. If they are really
              two different columns, replace this CHANGE COLUMN with a DROP COLUMN and an ADD COLUMN. MySQL only
@@ -90,41 +90,16 @@ CRITICAL old_stuff — only in target
   CRITICAL   Drop table `old_stuff`. It exists only in the target. Everything stored in it is deleted for good.
              The script leaves this commented out unless --include-drops is given.
 
-WARNING events — changed · MySQL: online, rebuilds table
-  SUGGESTION Column order differs (not changed by the script). Queries that name their columns are not affected,
-             and moving columns would mean copying the whole table.
-  WARNING    Change the primary key: (`id`) → (`id`, `happened`). Fails if those columns hold duplicate values or
-             NULLs. MySQL rebuilds the table, because InnoDB stores rows in primary key order: reads and writes
-             continue, but it takes time and disk space on a big table. [MySQL: online, rebuilds table]
-  WARNING    Partitioning differs (not changed by the script). Source: `PARTITION BY RANGE (year(happened))
-             (PARTITION p2025 VALUES LESS THAN (2026) ENGINE = InnoDB, PARTITION pmax VALUES LESS THAN MAXVALUE
-             ENGINE = InnoDB)`. Target: `none`. Repartitioning copies the whole table, so plan it as a separate
-             change.
-  DDL diff:
-    --- target
-    +++ source
-    @@ -1,5 +1,8 @@
-     CREATE TABLE `events` (
-    +  `id` int NOT NULL,
-       `happened` date NOT NULL,
-    -  `id` int NOT NULL,
-    -  PRIMARY KEY (`id`)
-    +  PRIMARY KEY (`id`,`happened`)
-     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    +  PARTITION BY RANGE (year(`happened`))
-    +(PARTITION p2025 VALUES LESS THAN (2026) ENGINE = InnoDB,
-    + PARTITION pmax VALUES LESS THAN MAXVALUE ENGINE = InnoDB)
-
-WARNING orders — changed · MySQL: blocks writes
-  WARNING    Change column `customer_id`: `-` → `unsigned`. Other column attributes change; check them before
-             running. MySQL copies the whole table and blocks writes to it until the copy finishes. [MySQL:
-             blocks writes]
+CRITICAL orders — changed · MySQL: blocks writes
+  CRITICAL   Change column `customer_id`: `int` → `int unsigned`. Values outside the new range are rejected
+             (strict mode) or clipped. Check first: `SELECT MIN(customer_id), MAX(customer_id) FROM orders`.
+             MySQL copies the whole table and blocks writes to it until the copy finishes. [MySQL: blocks writes]
   WARNING    Change column `state`: `varchar(10)` → `varchar(20)`, NULL allowed → NOT NULL, character set latin1
              → utf8mb4, default none → 'new'. Safe for the data. The limit only gets bigger. The ALTER fails
              (strict mode) if any row holds NULL. Check first: `SELECT COUNT(*) FROM orders WHERE state IS NULL`.
              Sorting, comparisons and unique checks follow the new rules, and joins to columns that keep the old
-             collation can no longer use an index. MySQL only updates the table definition (no rebuild); reads
-             and writes continue. [MySQL: instant]
+             collation can no longer use an index. MySQL copies the whole table and blocks writes to it until the
+             copy finishes. [MySQL: blocks writes]
   WARNING    Change column `ref_code`: `varchar(32)` → `varchar(64)`, character set latin1 → utf8mb4. Safe for
              the data. But MySQL has to copy the table: past 255 bytes, every value needs a 2-byte length field
              instead of 1. Sorting, comparisons and unique checks follow the new rules, and joins to columns that
@@ -170,6 +145,31 @@ WARNING orders — changed · MySQL: blocks writes
     +  KEY `idx_ref` (`ref_code`),
     +  CONSTRAINT `fk_orders_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE CASCADE
     +) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci ROW_FORMAT=DYNAMIC
+
+WARNING events — changed · MySQL: online, rebuilds table
+  SUGGESTION Column order differs (not changed by the script). Queries that name their columns are not affected,
+             and moving columns would mean copying the whole table.
+  WARNING    Change the primary key: (`id`) → (`id`, `happened`). Fails if those columns hold duplicate values or
+             NULLs. MySQL rebuilds the table, because InnoDB stores rows in primary key order: reads and writes
+             continue, but it takes time and disk space on a big table. [MySQL: online, rebuilds table]
+  WARNING    Partitioning differs (not changed by the script). Source: `PARTITION BY RANGE (year(happened))
+             (PARTITION p2025 VALUES LESS THAN (2026) ENGINE = InnoDB, PARTITION pmax VALUES LESS THAN MAXVALUE
+             ENGINE = InnoDB)`. Target: `none`. Repartitioning copies the whole table, so plan it as a separate
+             change.
+  DDL diff:
+    --- target
+    +++ source
+    @@ -1,5 +1,8 @@
+     CREATE TABLE `events` (
+    +  `id` int NOT NULL,
+       `happened` date NOT NULL,
+    -  `id` int NOT NULL,
+    -  PRIMARY KEY (`id`)
+    +  PRIMARY KEY (`id`,`happened`)
+     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    +  PARTITION BY RANGE (year(`happened`))
+    +(PARTITION p2025 VALUES LESS THAN (2026) ENGINE = InnoDB,
+    + PARTITION pmax VALUES LESS THAN MAXVALUE ENGINE = InnoDB)
 
 WARNING settings — changed · MySQL: online
   OK         Add column `scope` `varchar(20)` after `v`. No existing data changes. Instant on MySQL 8.0.12 and

@@ -1,2 +1,5 @@
 bin/
 *.tmp
+dist/
+# Blog drafts
+pt-schema-diff_blog.*

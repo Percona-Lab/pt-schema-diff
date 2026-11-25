@@ -4,7 +4,7 @@
 - **Target** (the schema the script changes): T
 - **Generated:** 2026-01-02 03:04
 
-6 tables: 1 to create, 4 to change, 1 only in the target, 0 identical. Changes: 8 critical, 9 warnings, 9 suggestions, 6 safe.
+6 tables: 1 to create, 4 to change, 1 only in the target, 0 identical. Changes: 10 critical, 7 warnings, 9 suggestions, 6 safe.
 
 ## `audit_log` — drop
 
@@ -16,7 +16,7 @@
 
 ## `customers` — alter (MySQL: blocks writes)
 
-- ⚠️ **Change column `id`: `unsigned auto_increment` → `auto_increment`.** Other column attributes change; check them before running. MySQL copies the whole table and blocks writes to it until the copy finishes. *MySQL: blocks writes.*
+- 🛑 **Change column `id`: `int unsigned` → `int`.** Values outside the new range are rejected (strict mode) or clipped. Check first: `SELECT MIN(id), MAX(id) FROM customers`. MySQL copies the whole table and blocks writes to it until the copy finishes. *MySQL: blocks writes.*
 - 🛑 **Change column `email`: `varchar(320)` → `varchar(255)`, character set utf8mb4 → utf8mb3.** Values longer than 255 characters are rejected (strict mode) or cut off. Check first: `SELECT MAX(CHAR_LENGTH(email)) FROM customers`. Characters the new character set can't store (for example emoji) are replaced or rejected. MySQL copies the whole table and blocks writes to it until the copy finishes. *MySQL: blocks writes.*
 - ⚠️ **Rename column `full_name` → `name`.** The data is kept. Treated as a rename because `full_name` exists only in the target, `name` only in the source, and both have the same definition. If they are really two different columns, replace this CHANGE COLUMN with a DROP COLUMN and an ADD COLUMN. MySQL only updates the table definition, so it is instant. *MySQL: instant.*
 - 🛑 **Change column `status`: `enum('active','paused','closed','deleted')` → `enum('active','paused','closed')`.** Removes 'deleted': rows holding them become '' (or the ALTER fails in strict mode). MySQL copies the whole table and blocks writes to it until the copy finishes. *MySQL: blocks writes.*
@@ -90,7 +90,7 @@ ALTER TABLE `customers`
 
 ## `orders` — alter (MySQL: blocks writes)
 
-- ⚠️ **Change column `customer_id`: `unsigned` → `-`.** Other column attributes change; check them before running. MySQL copies the whole table and blocks writes to it until the copy finishes. *MySQL: blocks writes.*
+- 🛑 **Change column `customer_id`: `int unsigned` → `int`.** Values outside the new range are rejected (strict mode) or clipped. Check first: `SELECT MIN(customer_id), MAX(customer_id) FROM orders`. MySQL copies the whole table and blocks writes to it until the copy finishes. *MySQL: blocks writes.*
 - 🛑 **Change column `state`: `varchar(20)` → `varchar(10)`, NOT NULL → NULL allowed, character set utf8mb4 → latin1, default 'new' → none.** Values longer than 10 characters are rejected (strict mode) or cut off. Check first: `SELECT MAX(CHAR_LENGTH(state)) FROM orders`. Safe for the data. Characters the new character set can't store (for example emoji) are replaced or rejected. MySQL copies the whole table and blocks writes to it until the copy finishes. *MySQL: blocks writes.*
 - 🛑 **Change column `ref_code`: `varchar(64)` → `varchar(32)`, character set utf8mb4 → latin1.** Values longer than 32 characters are rejected (strict mode) or cut off. Check first: `SELECT MAX(CHAR_LENGTH(ref_code)) FROM orders`. Characters the new character set can't store (for example emoji) are replaced or rejected. MySQL copies the whole table and blocks writes to it until the copy finishes. *MySQL: blocks writes.*
 - 🛑 **Drop column `total_cents` `bigint`.** Everything stored in this column is deleted for good. It exists only in the target. The script leaves this commented out unless --include-drops is given. Instant on MySQL 8.0.29 and later; older versions rebuild the table. *MySQL: instant.*

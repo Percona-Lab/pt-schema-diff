@@ -139,6 +139,27 @@ func newFlagSet(o *options, stderr io.Writer) *flag.FlagSet {
 	return fs
 }
 
+const verifyNeedsDSN = "--verify needs the DSN of a sandbox server to test the script on, e.g. --verify h=sandbox-host " +
+	"(the scratch database is created and dropped there)"
+
+// argError rewords a flag package error with Toolkit-style --options, and explains a --verify without a DSN.
+func argError(err error) string {
+	msg := err.Error()
+	if msg == "flag needs an argument: -verify" {
+		return verifyNeedsDSN
+	}
+	for _, p := range []string{"flag needs an argument: -", "flag provided but not defined: -"} {
+		if strings.HasPrefix(msg, p) {
+			name := strings.TrimPrefix(strings.TrimPrefix(msg, p), "-")
+			if strings.HasPrefix(p, "flag needs") {
+				return "option --" + name + " needs a value"
+			}
+			return "unknown option --" + name
+		}
+	}
+	return strings.Replace(msg, " flag -", " option --", 1)
+}
+
 // parseArgs parses options given anywhere on the command line, before or after the positional arguments.
 func parseArgs(fs *flag.FlagSet, args []string) ([]string, error) {
 	var positional []string
@@ -169,11 +190,20 @@ type cli struct {
 func run(args []string, stdout, stderr io.Writer) int {
 	c := &cli{stdout: stdout, stderr: stderr}
 	fs := newFlagSet(&c.o, stderr)
+	fs.SetOutput(io.Discard) // parse errors are reported below, without the full help text
 	positional, err := parseArgs(fs, args)
+	fs.SetOutput(stderr)
 	if errors.Is(err, flag.ErrHelp) {
+		fs.SetOutput(stdout)
+		fs.Usage()
 		return exitSame
 	}
 	if err != nil {
+		fmt.Fprintf(stderr, "%s: %s\nRun %s --help for the options.\n", toolName, argError(err), toolName)
+		return exitError
+	}
+	if strings.HasPrefix(c.o.verify, "-") {
+		fmt.Fprintf(stderr, "%s: %s\n", toolName, verifyNeedsDSN)
 		return exitError
 	}
 	if c.o.help {

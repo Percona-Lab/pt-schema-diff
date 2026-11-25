@@ -338,7 +338,7 @@ var (
 		"character": "char", "nchar": "char", "nvarchar": "varchar"}
 	charsetMaxBytes = map[string]int{"latin1": 1, "ascii": 1, "binary": 1, "utf8mb3": 3, "ucs2": 2, "utf16": 4, "utf32": 4}
 
-	reType           = regexp.MustCompile(`(?i)^(\w+)(?:\s+(?:precision|varying))?\s*(?:\(([^)]*)\))?((?:\s+(?:unsigned|signed|zerofill))*)`)
+	reType           = regexp.MustCompile(`(?i)^(\w+)(?:\s+(?:precision|varying))?(?:\s*\(([^)]*)\))?((?:\s+(?:unsigned|signed|zerofill))*)`)
 	reCharVarying    = regexp.MustCompile(`(?i)^character\s+varying`)
 	reColCharset     = regexp.MustCompile(`\b(?:character set|charset) (\w+)`)
 	reColCollate     = regexp.MustCompile(`\bcollate (\w+)`)

@@ -119,6 +119,22 @@ func TestVarcharWidening(t *testing.T) {
 	if c.Severity != SeverityCritical {
 		t.Errorf("shrinking should be critical: %+v", c)
 	}
+	// A sign change is a type change: negative values no longer fit.
+	for _, tgt := range []string{"CREATE TABLE t (a int NOT NULL)", "CREATE TABLE t (a int(11) NOT NULL)"} {
+		c = find(t, diffOne(t, "CREATE TABLE t (a int unsigned NOT NULL)", tgt), "modify_column")
+		if c.Severity != SeverityCritical || !strings.Contains(c.Text, "`int` → `int unsigned`") {
+			t.Errorf("signed → unsigned should be critical: %+v", c)
+		}
+	}
+	// Widening plus a character set change copies the table; widening plus NOT NULL rebuilds it.
+	c = find(t, diffOne(t, "CREATE TABLE t (a varchar(60) CHARACTER SET utf8mb4)", "CREATE TABLE t (a varchar(50) CHARACTER SET utf8mb3)"), "modify_column")
+	if c.Algorithm != AlgoCopy || c.Label != "blocks writes" || strings.Contains(c.Text, "no rebuild") {
+		t.Errorf("charset change should copy the table: %+v", c)
+	}
+	c = find(t, diffOne(t, "CREATE TABLE t (a varchar(60) NOT NULL) CHARSET=utf8mb4", "CREATE TABLE t (a varchar(50)) CHARSET=utf8mb4"), "modify_column")
+	if c.Algorithm != AlgoRebuild || c.Label != "online, rebuilds table" || strings.Contains(c.Text, "no rebuild") {
+		t.Errorf("NOT NULL should rebuild the table: %+v", c)
+	}
 }
 
 func TestEnum(t *testing.T) {

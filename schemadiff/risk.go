@@ -318,6 +318,11 @@ func modifyRisk(table, name string, o, n ColumnAttrs) (string, string, []string,
 	if len(what) == 0 {
 		what = []string{"same meaning, written differently"}
 	}
+	// A longer VARCHAR alone is metadata-only, but a NOT NULL or character set change in the same MODIFY makes
+	// MySQL rebuild or copy the table, so the metadata-only sentence no longer applies.
+	if run == metadataOnly && algorithm != AlgoInplace {
+		run = ""
+	}
 	if run == "" {
 		run = runText[algorithm]
 	}

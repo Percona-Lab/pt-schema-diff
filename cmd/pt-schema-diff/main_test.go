@@ -140,3 +140,21 @@ func TestServerWide(t *testing.T) {
 		t.Errorf("mixed D=: exit %d %s", code, stderr)
 	}
 }
+
+func TestArgumentErrors(t *testing.T) {
+	src := "../../testdata/source.sql"
+	for args, want := range map[string]string{
+		"--verify":               "--verify needs the DSN of a sandbox server",
+		"--verify --format json": "--verify needs the DSN of a sandbox server",
+		"--bogus":                "unknown option --bogus",
+		"--format":               "option --format needs a value",
+	} {
+		code, out, stderr := runCLI(append([]string{src, src}, strings.Fields(args)...)...)
+		if code != exitError || !strings.Contains(stderr, want) || strings.Contains(stderr, "Options:") || out != "" {
+			t.Errorf("%s: exit %d, stderr %q", args, code, stderr)
+		}
+	}
+	if code, out, _ := runCLI("-h"); code != exitSame || !strings.Contains(out, "Usage:") {
+		t.Errorf("-h should print the help: exit %d", code)
+	}
+}

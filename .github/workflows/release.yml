@@ -1,0 +1,52 @@
+# Builds and publishes a release when a version tag is pushed:
+#   git tag -a v0.1.0 -m "pt-schema-diff 0.1.0" && git push origin v0.1.0
+# The release gets the four binaries, the Linux bundle (both Linux binaries and a launcher), SHA256SUMS, and a signed
+# build provenance attestation for each file. Check a downloaded file with:
+#   sha256sum --check --ignore-missing SHA256SUMS
+#   gh attestation verify pt-schema-diff-linux-amd64 --repo Percona-Lab/pt-schema-diff
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write       # create the release
+  id-token: write       # sign the attestations
+  attestations: write   # store the attestations
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Test
+        run: make test
+
+      - name: Build release files
+        run: make dist VERSION="${GITHUB_REF_NAME#v}"
+
+      # Attestations need a public repository (or GitHub Enterprise Cloud for a private one). If this step fails,
+      # the release is still published with SHA256SUMS.
+      - name: Attest build provenance
+        continue-on-error: true
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            dist/pt-schema-diff-*
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "pt-schema-diff ${GITHUB_REF_NAME#v}" \
+            --generate-notes \
+            --verify-tag

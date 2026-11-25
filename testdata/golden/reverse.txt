@@ -1,15 +1,15 @@
 # Source: S (the schema to match)
 # Target: T (the schema the script changes)
-# 6 tables: 1 to create, 4 to change, 1 only in the target, 0 identical. Changes: 8 critical, 9 warnings, 9 suggestions, 6 safe.
+# 6 tables: 1 to create, 4 to change, 1 only in the target, 0 identical. Changes: 10 critical, 7 warnings, 9 suggestions, 6 safe.
 
 CRITICAL audit_log — only in target
   CRITICAL   Drop table `audit_log`. It exists only in the target. Everything stored in it is deleted for good.
              The script leaves this commented out unless --include-drops is given.
 
 CRITICAL customers — changed · MySQL: blocks writes
-  WARNING    Change column `id`: `unsigned auto_increment` → `auto_increment`. Other column attributes change;
-             check them before running. MySQL copies the whole table and blocks writes to it until the copy
-             finishes. [MySQL: blocks writes]
+  CRITICAL   Change column `id`: `int unsigned` → `int`. Values outside the new range are rejected (strict mode)
+             or clipped. Check first: `SELECT MIN(id), MAX(id) FROM customers`. MySQL copies the whole table and
+             blocks writes to it until the copy finishes. [MySQL: blocks writes]
   CRITICAL   Change column `email`: `varchar(320)` → `varchar(255)`, character set utf8mb4 → utf8mb3. Values
              longer than 255 characters are rejected (strict mode) or cut off. Check first: `SELECT
              MAX(CHAR_LENGTH(email)) FROM customers`. Characters the new character set can't store (for example
@@ -91,9 +91,9 @@ CRITICAL customers — changed · MySQL: blocks writes
     +) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
 
 CRITICAL orders — changed · MySQL: blocks writes
-  WARNING    Change column `customer_id`: `unsigned` → `-`. Other column attributes change; check them before
-             running. MySQL copies the whole table and blocks writes to it until the copy finishes. [MySQL:
-             blocks writes]
+  CRITICAL   Change column `customer_id`: `int unsigned` → `int`. Values outside the new range are rejected
+             (strict mode) or clipped. Check first: `SELECT MIN(customer_id), MAX(customer_id) FROM orders`.
+             MySQL copies the whole table and blocks writes to it until the copy finishes. [MySQL: blocks writes]
   CRITICAL   Change column `state`: `varchar(20)` → `varchar(10)`, NOT NULL → NULL allowed, character set utf8mb4
              → latin1, default 'new' → none. Values longer than 10 characters are rejected (strict mode) or cut
              off. Check first: `SELECT MAX(CHAR_LENGTH(state)) FROM orders`. Safe for the data. Characters the
